@@ -25,7 +25,7 @@
 
   <!-- Main Layout -->
   <div class="flex flex-1 overflow-hidden">
-    
+
     <!-- Left Section: Menu Grid -->
     <main class="flex-1 p-6 flex flex-col overflow-y-auto">
       <!-- Search & Filters -->
@@ -75,10 +75,7 @@
 
       <!-- Cart Item List -->
       <div class="flex-1 overflow-y-auto p-4 space-y-3" id="cart-list">
-        <div class="text-center text-gray-400 my-12" id="empty-cart-msg">
-          <i data-lucide="shopping-bag" class="w-12 h-12 mx-auto mb-2 stroke-1"></i>
-          <p class="text-sm">Belum ada item dipilih</p>
-        </div>
+        <!-- Cart items generated dynamically -->
       </div>
 
       <!-- Cart Summary & Checkout -->
@@ -103,9 +100,51 @@
     </aside>
   </div>
 
+  <!-- Modal Struk / Konfirmasi Pesanan -->
+  <div id="receipt-modal" class="fixed inset-0 bg-black/50 z-50 hidden">
+    <div class="flex h-full items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+        <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <i data-lucide="check" class="w-8 h-8 text-green-600"></i>
+        </div>
+        <h2 class="text-lg font-bold text-gray-800">Pesanan Berhasil</h2>
+        <p class="text-sm text-gray-500 mb-4">Pesanan sudah tercatat di sistem.</p>
+        <div class="bg-gray-50 rounded-xl p-3 text-left text-xs space-y-2 mb-4">
+          <div class="flex justify-between gap-3">
+            <span class="text-gray-500">ID Pesanan</span>
+            <span id="receipt-id" class="font-semibold text-gray-800 break-all text-right">-</span>
+          </div>
+          <div class="flex justify-between gap-3">
+            <span class="text-gray-500">Tipe</span>
+            <span id="receipt-type" class="font-semibold text-gray-800">-</span>
+          </div>
+          <div class="flex justify-between gap-3">
+            <span class="text-gray-500">Meja</span>
+            <span id="receipt-table" class="font-semibold text-gray-800">-</span>
+          </div>
+          <div class="flex justify-between gap-3 border-t pt-2">
+            <span class="text-gray-500">Total</span>
+            <span id="receipt-total" class="font-bold text-amber-800">Rp 0</span>
+          </div>
+        </div>
+        <button id="receipt-close" class="w-full bg-amber-800 hover:bg-amber-900 text-white font-semibold py-2.5 rounded-xl transition">
+          Pesanan Baru
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notifikasi Error -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden">
+    <div class="bg-red-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 max-w-sm">
+      <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+      <span id="toast-msg"></span>
+    </div>
+  </div>
+
   <!-- Script Client Side Logic -->
   <script>
-    // Sample Menu Data
+    // Sample Menu Data (dipakai bila API belum menyediakan menu)
     const defaultProducts = [
       { id: 1, name: "Espresso", category: "coffee", price: 18000, icon: "coffee" },
       { id: 2, name: "Caffe Latte", category: "coffee", price: 25000, icon: "coffee" },
@@ -117,23 +156,38 @@
       { id: 8, name: "Nasi Goreng Cafe", category: "food", price: 32000, icon: "utensils" }
     ];
 
+    const TAX_RATE = 0.1;
+
+    let products = defaultProducts.slice();
     let cart = [];
     let activeCategory = "all";
+    let toastTimer = null;
 
     function formatRupiah(number) {
       return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(number);
     }
 
+    function cartTotals() {
+      const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const tax = Math.round(subtotal * TAX_RATE);
+      return { subtotal, tax, total: subtotal + tax };
+    }
+
     function renderProducts() {
       const grid = document.getElementById("menu-grid");
       const searchQuery = document.getElementById("search-input").value.toLowerCase();
-      
+
       grid.innerHTML = "";
-      const filtered = defaultProducts.filter(p => {
+      const filtered = products.filter(p => {
         const matchesCategory = activeCategory === "all" || p.category === activeCategory;
-        const matchesSearch = p.name.toLowerCase().includes(searchQuery);
+        const matchesSearch = String(p.name || "").toLowerCase().includes(searchQuery);
         return matchesCategory && matchesSearch;
       });
+
+      if (filtered.length === 0) {
+        grid.innerHTML = '<p class="col-span-full text-sm text-gray-400 py-8 text-center">Menu tidak ditemukan.</p>';
+        return;
+      }
 
       filtered.forEach(product => {
         const card = document.createElement("div");
@@ -142,7 +196,7 @@
         card.innerHTML = `
           <div>
             <div class="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center text-amber-800 mb-3">
-              <i data-lucide="${product.icon}" class="w-6 h-6"></i>
+              <i data-lucide="${product.icon || 'coffee'}" class="w-6 h-6"></i>
             </div>
             <h3 class="font-semibold text-gray-800 text-sm mb-1">${product.name}</h3>
           </div>
@@ -158,8 +212,22 @@
       lucide.createIcons();
     }
 
+    async function loadProducts() {
+      try {
+        const res = await fetch("/api/products");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          products = data;
+          renderProducts();
+        }
+      } catch (err) {
+        console.warn("Gagal memuat menu dari server, memakai menu default.", err);
+      }
+    }
+
     function addToCart(product) {
-      const existing = cart.find(item => item.id === product.id);
+      const existing = cart.find(item => String(item.id) === String(product.id));
       if (existing) {
         existing.qty += 1;
       } else {
@@ -169,11 +237,11 @@
     }
 
     function updateQty(id, delta) {
-      const item = cart.find(i => i.id === id);
+      const item = cart.find(i => String(i.id) === String(id));
       if (item) {
         item.qty += delta;
         if (item.qty <= 0) {
-          cart = cart.filter(i => i.id !== id);
+          cart = cart.filter(i => String(i.id) !== String(id));
         }
       }
       updateCartUI();
@@ -181,71 +249,150 @@
 
     function updateCartUI() {
       const container = document.getElementById("cart-list");
-      const emptyMsg = document.getElementById("empty-cart-msg");
       const btnCheckout = document.getElementById("btn-checkout");
+      const totals = cartTotals();
+
+      container.innerHTML = "";
 
       if (cart.length === 0) {
-        container.innerHTML = "";
-        container.appendChild(emptyMsg);
-        emptyMsg.classList.remove("hidden");
+        container.innerHTML = `
+          <div class="text-center text-gray-400 my-12">
+            <i data-lucide="shopping-bag" class="w-12 h-12 mx-auto mb-2 stroke-1"></i>
+            <p class="text-sm">Belum ada item dipilih</p>
+          </div>
+        `;
         btnCheckout.disabled = true;
-        document.getElementById("subtotal-val").innerText = "Rp 0";
-        document.getElementById("tax-val").innerText = "Rp 0";
-        document.getElementById("total-val").innerText = "Rp 0";
+      } else {
+        cart.forEach(item => {
+          const row = document.createElement("div");
+          row.className = "flex justify-between items-center bg-gray-50 p-2.5 rounded-lg border";
+          row.innerHTML = `
+            <div class="flex-1 pr-2">
+              <h4 class="font-medium text-xs text-gray-800">${item.name}</h4>
+              <span class="text-xs text-amber-800 font-semibold">${formatRupiah(item.price)}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button data-qty="-1" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-600 hover:bg-gray-100">-</button>
+              <span class="text-xs font-semibold w-4 text-center">${item.qty}</span>
+              <button data-qty="1" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-600 hover:bg-gray-100">+</button>
+            </div>
+          `;
+          row.querySelectorAll("button[data-qty]").forEach(btn => {
+            btn.onclick = () => updateQty(item.id, Number(btn.dataset.qty));
+          });
+          container.appendChild(row);
+        });
+        btnCheckout.disabled = false;
+      }
+
+      document.getElementById("subtotal-val").innerText = formatRupiah(totals.subtotal);
+      document.getElementById("tax-val").innerText = formatRupiah(totals.tax);
+      document.getElementById("total-val").innerText = formatRupiah(totals.total);
+
+      lucide.createIcons();
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      document.getElementById("toast-msg").innerText = message;
+      toast.classList.remove("hidden");
+      lucide.createIcons();
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.add("hidden"), 4000);
+    }
+
+    function showReceipt(order) {
+      document.getElementById("receipt-id").innerText = order.id || "-";
+      document.getElementById("receipt-type").innerText = order.orderType || "-";
+      document.getElementById("receipt-table").innerText = order.tableNo || "-";
+      document.getElementById("receipt-total").innerText = formatRupiah(order.total || 0);
+      document.getElementById("receipt-modal").classList.remove("hidden");
+      lucide.createIcons();
+    }
+
+    async function handleCheckout() {
+      if (cart.length === 0) return;
+
+      const orderType = document.getElementById("order-type").value;
+      const tableInput = document.getElementById("table-no");
+      const tableNo = tableInput.value.trim();
+
+      if (orderType === "Dine-In" && !tableNo) {
+        showToast("Nomor meja wajib diisi untuk pesanan Dine-In.");
+        tableInput.focus();
         return;
       }
 
-      emptyMsg.classList.add("hidden");
-      container.innerHTML = "";
+      const totals = cartTotals();
+      const btnCheckout = document.getElementById("btn-checkout");
+      const originalLabel = btnCheckout.innerHTML;
 
-      let subtotal = 0;
-      cart.forEach(item => {
-        subtotal += item.price * item.qty;
-        const row = document.createElement("div");
-        row.className = "flex justify-between items-center bg-gray-50 p-2.5 rounded-lg border";
-        row.innerHTML = `
-          <div class="flex-1 pr-2">
-            <h4 class="font-medium text-xs text-gray-800">${item.name}</h4>
-            <span class="text-xs text-amber-800 font-semibold">${formatRupiah(item.price)}</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <button onclick="updateQty(${item.id}, -1)" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-600 hover:bg-gray-100">-</button>
-            <span class="text-xs font-semibold w-4 text-center">${item.qty}</span>
-            <button onclick="updateQty(${item.id}, 1)" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-600 hover:bg-gray-100">+</button>
-          </div>
-        `;
-        container.appendChild(row);
-      });
+      btnCheckout.disabled = true;
+      btnCheckout.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Memproses...';
+      lucide.createIcons();
 
-      const tax = subtotal * 0.1;
-      const total = subtotal + tax;
+      try {
+        const res = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderType,
+            tableNo: tableNo || "-",
+            items: cart.map(item => ({ id: item.id, name: item.name, price: item.price, qty: item.qty })),
+            subtotal: totals.subtotal,
+            tax: totals.tax,
+            total: totals.total,
+            paymentMethod: "Cash"
+          })
+        });
 
-      document.getElementById("subtotal-val").innerText = formatRupiah(subtotal);
-      document.getElementById("tax-val").innerText = formatRupiah(tax);
-      document.getElementById("total-val").innerText = formatRupiah(total);
-      btnCheckout.disabled = false;
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(result.error || "Gagal menyimpan pesanan.");
+        }
+
+        showReceipt(result.data || { id: result.id, orderType, tableNo: tableNo || "-", total: totals.total });
+        cart = [];
+        tableInput.value = "";
+        updateCartUI();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || "Gagal menyimpan pesanan. Silakan coba lagi.");
+        btnCheckout.disabled = false;
+      } finally {
+        btnCheckout.innerHTML = originalLabel;
+        btnCheckout.disabled = cart.length === 0;
+        lucide.createIcons();
+      }
     }
 
     // Filter Listeners
     document.getElementById("category-filters").addEventListener("click", (e) => {
-      if (e.target.classList.contains("cat-btn")) {
-        document.querySelectorAll(".cat-btn").forEach(btn => {
-          btn.className = "cat-btn bg-white text-gray-600 hover:bg-amber-50 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap border";
-        });
-        e.target.className = "cat-btn bg-amber-800 text-white px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap shadow-sm";
-        activeCategory = e.target.dataset.cat;
-        renderProducts();
-      }
+      const btn = e.target.closest(".cat-btn");
+      if (!btn) return;
+      document.querySelectorAll(".cat-btn").forEach(b => {
+        b.className = "cat-btn bg-white text-gray-600 hover:bg-amber-50 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap border";
+      });
+      btn.className = "cat-btn bg-amber-800 text-white px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap shadow-sm";
+      activeCategory = btn.dataset.cat;
+      renderProducts();
     });
 
     document.getElementById("search-input").addEventListener("input", renderProducts);
     document.getElementById("clear-cart").addEventListener("click", () => { cart = []; updateCartUI(); });
+    document.getElementById("btn-checkout").addEventListener("click", handleCheckout);
+    document.getElementById("receipt-close").addEventListener("click", () => {
+      document.getElementById("receipt-modal").classList.add("hidden");
+    });
 
     // Initial Setup
     renderProducts();
+    updateCartUI();
+    loadProducts();
     setInterval(() => {
       document.getElementById("current-time").innerText = new Date().toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' });
     }, 1000);
+    document.getElementById("current-time").innerText = new Date().toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' });
   </script>
 </body>
 </html>
