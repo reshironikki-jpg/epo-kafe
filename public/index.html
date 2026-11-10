@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EPOS Cafe System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+
+  <!-- Header -->
+  <header class="bg-amber-800 text-white px-6 py-4 flex justify-between items-center shadow-md">
+    <div class="flex items-center gap-3">
+      <i data-lucide="coffee" class="w-8 h-8"></i>
+      <div>
+        <h1 class="text-xl font-bold leading-none">Cafe EPOS</h1>
+        <span class="text-xs text-amber-200">Point of Sale System</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <span class="text-sm bg-amber-900 px-3 py-1 rounded-full text-amber-200" id="current-time"></span>
+    </div>
+  </header>
+
+  <!-- Main Layout -->
+  <div class="flex flex-1 overflow-hidden">
+    
+    <!-- Left Section: Menu Grid -->
+    <main class="flex-1 p-6 flex flex-col overflow-y-auto">
+      <!-- Search & Filters -->
+      <div class="flex flex-col sm:flex-row gap-4 mb-6">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="absolute left-3 top-3 w-5 h-5 text-gray-400"></i>
+          <input type="text" id="search-input" placeholder="Cari menu..." class="w-full pl-10 pr-4 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-700 bg-white shadow-sm">
+        </div>
+        <div class="flex gap-2 overflow-x-auto pb-1" id="category-filters">
+          <button data-cat="all" class="cat-btn bg-amber-800 text-white px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap shadow-sm">Semua</button>
+          <button data-cat="coffee" class="cat-btn bg-white text-gray-600 hover:bg-amber-50 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap border">Kopi</button>
+          <button data-cat="non-coffee" class="cat-btn bg-white text-gray-600 hover:bg-amber-50 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap border">Non-Kopi</button>
+          <button data-cat="food" class="cat-btn bg-white text-gray-600 hover:bg-amber-50 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap border">Makanan</button>
+          <button data-cat="snack" class="cat-btn bg-white text-gray-600 hover:bg-amber-50 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap border">Cemilan</button>
+        </div>
+      </div>
+
+      <!-- Menu Items Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="menu-grid">
+        <!-- Products generated dynamically -->
+      </div>
+    </main>
+
+    <!-- Right Section: Cart / Checkout Panel -->
+    <aside class="w-96 bg-white border-l shadow-lg flex flex-col h-full">
+      <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+        <h2 class="font-bold text-lg flex items-center gap-2">
+          <i data-lucide="shopping-cart" class="w-5 h-5 text-amber-800"></i> Pesanan
+        </h2>
+        <button id="clear-cart" class="text-xs text-red-500 hover:underline">Kosongkan</button>
+      </div>
+
+      <!-- Detail Option Pesanan -->
+      <div class="p-4 border-b grid grid-cols-2 gap-3 bg-white">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">Tipe Pesanan</label>
+          <select id="order-type" class="w-full text-sm border rounded-lg p-2 focus:ring-1 focus:ring-amber-700">
+            <option value="Dine-In">Dine-In (Makan di Sini)</option>
+            <option value="Takeaway">Takeaway (Bawa Pulang)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">Nomor Meja</label>
+          <input type="text" id="table-no" placeholder="Contoh: T-04" class="w-full text-sm border rounded-lg p-2 focus:ring-1 focus:ring-amber-700">
+        </div>
+      </div>
+
+      <!-- Cart Item List -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-3" id="cart-list">
+        <div class="text-center text-gray-400 my-12" id="empty-cart-msg">
+          <i data-lucide="shopping-bag" class="w-12 h-12 mx-auto mb-2 stroke-1"></i>
+          <p class="text-sm">Belum ada item dipilih</p>
+        </div>
+      </div>
+
+      <!-- Cart Summary & Checkout -->
+      <div class="p-4 border-t bg-gray-50 space-y-2">
+        <div class="flex justify-between text-sm text-gray-600">
+          <span>Subtotal</span>
+          <span id="subtotal-val">Rp 0</span>
+        </div>
+        <div class="flex justify-between text-sm text-gray-600">
+          <span>Pajak (10%)</span>
+          <span id="tax-val">Rp 0</span>
+        </div>
+        <div class="flex justify-between font-bold text-base text-gray-900 border-t pt-2">
+          <span>Total</span>
+          <span id="total-val" class="text-amber-800">Rp 0</span>
+        </div>
+
+        <button id="btn-checkout" disabled class="w-full mt-4 bg-amber-800 hover:bg-amber-900 disabled:bg-gray-300 text-white font-bold py-3 rounded-xl transition flex justify-center items-center gap-2 shadow">
+          <i data-lucide="credit-card" class="w-5 h-5"></i> Bayar Sekarang
+        </button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Script Client Side Logic -->
+  <script>
+    // Sample Menu Data
+    const defaultProducts = [
+      { id: 1, name: "Espresso", category: "coffee", price: 18000, icon: "coffee" },
+      { id: 2, name: "Caffe Latte", category: "coffee", price: 25000, icon: "coffee" },
+      { id: 3, name: "Cappuccino", category: "coffee", price: 24000, icon: "coffee" },
+      { id: 4, name: "Matcha Latte", category: "non-coffee", price: 27000, icon: "cup-soda" },
+      { id: 5, name: "Chocolate Ice", category: "non-coffee", price: 23000, icon: "cup-soda" },
+      { id: 6, name: "Croissant Original", category: "snack", price: 20000, icon: "sandwich" },
+      { id: 7, name: "French Fries", category: "snack", price: 15000, icon: "utensils" },
+      { id: 8, name: "Nasi Goreng Cafe", category: "food", price: 32000, icon: "utensils" }
+    ];
+
+    let cart = [];
+    let activeCategory = "all";
+
+    function formatRupiah(number) {
+      return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(number);
+    }
+
+    function renderProducts() {
+      const grid = document.getElementById("menu-grid");
+      const searchQuery = document.getElementById("search-input").value.toLowerCase();
+      
+      grid.innerHTML = "";
+      const filtered = defaultProducts.filter(p => {
+        const matchesCategory = activeCategory === "all" || p.category === activeCategory;
+        const matchesSearch = p.name.toLowerCase().includes(searchQuery);
+        return matchesCategory && matchesSearch;
+      });
+
+      filtered.forEach(product => {
+        const card = document.createElement("div");
+        card.className = "bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer flex flex-col justify-between";
+        card.onclick = () => addToCart(product);
+        card.innerHTML = `
+          <div>
+            <div class="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center text-amber-800 mb-3">
+              <i data-lucide="${product.icon}" class="w-6 h-6"></i>
+            </div>
+            <h3 class="font-semibold text-gray-800 text-sm mb-1">${product.name}</h3>
+          </div>
+          <div class="mt-3 flex justify-between items-center">
+            <span class="font-bold text-amber-800 text-sm">${formatRupiah(product.price)}</span>
+            <button class="bg-amber-100 text-amber-800 rounded-lg p-1.5 hover:bg-amber-200">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+            </button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    function addToCart(product) {
+      const existing = cart.find(item => item.id === product.id);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        cart.push({ ...product, qty: 1 });
+      }
+      updateCartUI();
+    }
+
+    function updateQty(id, delta) {
+      const item = cart.find(i => i.id === id);
+      if (item) {
+        item.qty += delta;
+        if (item.qty <= 0) {
+          cart = cart.filter(i => i.id !== id);
+        }
+      }
+      updateCartUI();
+    }
+
+    function updateCartUI() {
+      const container = document.getElementById("cart-list");
+      const emptyMsg = document.getElementById("empty-cart-msg");
+      const btnCheckout = document.getElementById("btn-checkout");
+
+      if (cart.length === 0) {
+        container.innerHTML = "";
+        container.appendChild(emptyMsg);
+        emptyMsg.classList.remove("hidden");
+        btnCheckout.disabled = true;
+        document.getElementById("subtotal-val").innerText = "Rp 0";
+        document.getElementById("tax-val").innerText = "Rp 0";
+        document.getElementById("total-val").innerText = "Rp 0";
+        return;
+      }
+
+      emptyMsg.classList.add("hidden");
+      container.innerHTML = "";
+
+      let subtotal = 0;
+      cart.forEach(item => {
+        subtotal += item.price * item.qty;
+        const row = document.createElement("div");
+        row.className = "flex justify-between items-center bg-gray-50 p-2.5 rounded-lg border";
+        row.innerHTML = `
+          <div class="flex-1 pr-2">
+            <h4 class="font-medium text-xs text-gray-800">${item.name}</h4>
+            <span class="text-xs text-amber-800 font-semibold">${formatRupiah(item.price)}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="updateQty(${item.id}, -1)" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-600 hover:bg-gray-100">-</button>
+            <span class="text-xs font-semibold w-4 text-center">${item.qty}</span>
+            <button onclick="updateQty(${item.id}, 1)" class="w-6 h-6 rounded bg-white border flex items-center justify-center text-gray-600 hover:bg-gray-100">+</button>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+
+      const tax = subtotal * 0.1;
+      const total = subtotal + tax;
+
+      document.getElementById("subtotal-val").innerText = formatRupiah(subtotal);
+      document.getElementById("tax-val").innerText = formatRupiah(tax);
+      document.getElementById("total-val").innerText = formatRupiah(total);
+      btnCheckout.disabled = false;
+    }
+
+    // Filter Listeners
+    document.getElementById("category-filters").addEventListener("click", (e) => {
+      if (e.target.classList.contains("cat-btn")) {
+        document.querySelectorAll(".cat-btn").forEach(btn => {
+          btn.className = "cat-btn bg-white text-gray-600 hover:bg-amber-50 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap border";
+        });
+        e.target.className = "cat-btn bg-amber-800 text-white px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap shadow-sm";
+        activeCategory = e.target.dataset.cat;
+        renderProducts();
+      }
+    });
+
+    document.getElementById("search-input").addEventListener("input", renderProducts);
+    document.getElementById("clear-cart").addEventListener("click", () => { cart = []; updateCartUI(); });
+
+    // Initial Setup
+    renderProducts();
+    setInterval(() => {
+      document.getElementById("current-time").innerText = new Date().toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' });
+    }, 1000);
+  </script>
+</body>
+</html>
